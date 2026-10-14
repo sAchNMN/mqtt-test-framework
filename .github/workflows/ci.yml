@@ -55,11 +55,17 @@ jobs:
       - name: 启动 Mosquitto
         run: |
           docker run -d --name mosquitto -p 1883:1883 \
-            -v "$PWD/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" \
+            -v "$PWD/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf" \
             eclipse-mosquitto:2.0
+
+      - name: 等待 broker 就绪
+        run: |
+          # 用 TCP 端口探测而不是 mosquitto_sub。
+          # 原因：mosquitto.conf 里设了 sys_interval=0，$SYS 主题不会更新，
+          # 拿它做健康检查会永远等不到消息（这个坑踩过）。
           for i in $(seq 1 30); do
-            if docker exec mosquitto mosquitto_sub -h 127.0.0.1 -t '$SYS/broker/version' -C 1 -W 2 >/dev/null 2>&1; then
-              echo "mosquitto 已就绪"
+            if python -c "import socket; socket.create_connection(('127.0.0.1', 1883), 1)" 2>/dev/null; then
+              echo "mosquitto 已就绪（第 $i 次尝试）"
               exit 0
             fi
             sleep 1

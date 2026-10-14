@@ -93,12 +93,34 @@
 - **结论**：**报错信息不友好时，直接去读源码里的配置解析逻辑，比反复试错快。**
   这里读 `plugins/manager.py` 的 `_load_str_plugin` 五分钟就定位了。
 
+#### 6. CI 交付时从未真正运行过
+
+- **现象**：CI 中"真实 Mosquitto 对比测试"job 失败，报 `mosquitto 启动超时`。
+- **定位**：看容器日志，发现 broker **其实正常启动了并接受了大量连接**——那一长串
+  `New client connected ... disconnected` 就是健康检查用的 `mosquitto_sub`
+  在反复重试。真正的问题不是 broker 没起来，是检查命令永远拿不到结果。
+- **原因**：`docker/mosquitto.conf` 里设了 `sys_interval 0`（禁用 $SYS 主题更新），
+  而健康检查却用 `mosquitto_sub -t '$SYS/broker/version'` 等消息。
+  **配置与验证手段自相矛盾**，必然超时。
+- **附带问题**：`chown: /mosquitto/config/mosquitto.conf: Read-only file system`
+  ——entrypoint 要改配置文件属主，但挂载用了 `:ro`。
+- **解法**：
+  - 健康检查改用 TCP 端口探测（`socket.create_connection`），不依赖 broker 的任何主题
+  - 挂载去掉 `:ro`
+  - `docker-compose.yml` 的 healthcheck 同步改为 `mosquitto_pub -q 1`（发布并等 PUBACK）
+- **数据**：同一次运行中，3 个内嵌 broker job（Python 3.11 / 3.12 / 3.13）全部通过，
+  amqtt 的跨版本兼容性风险由此排除。
+- **结论**：**没有运行过的 CI 等于没有 CI。** 我交付这套 workflow 时只在 Windows
+  本地跑过 pytest，从未执行过 workflow 本身，于是把一个必然失败的检查逻辑发了出去。
+  凡是自己没亲眼见过绿的东西，都不该当作"已完成"交付。
+
 ### 结果
 
 - 测试套件：`16 passed, 6 skipped in 8.20s`，零警告
 - 覆盖范围：环境自检 4 条 + QoS 投递语义 12 条
 - 项目规模：16 个文件 / 1099 行 Python
-- CI：Python 3.11 / 3.12 / 3.13 矩阵 + 真实 Mosquitto 容器对比 job
+- CI：Python 3.11 / 3.12 / 3.13 矩阵（通过）+ 真实 Mosquitto 容器对比 job（首次失败，
+  已修复健康检查逻辑，待二次验证）
 
 ### 下一步
 

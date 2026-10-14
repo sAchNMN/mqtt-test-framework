@@ -5,9 +5,13 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # 不加 :ro —— eclipse-mosquitto 的 entrypoint 会 chown 配置文件，
+      # 只读挂载会导致 "chown: Read-only file system" 报错（虽不致命，但会干扰排查）
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 3 || exit 1"]
+      # 用 pub -q 1 探测（发布并等 PUBACK），不要用 sub 订阅 $SYS：
+      # mosquitto.conf 里 sys_interval=0 已禁用 $SYS 更新，订阅它会永远等不到消息
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -q 1 -t internal/health-probe -m ok"]
       interval: 5s
       timeout: 5s
       retries: 6

@@ -1,5 +1,7 @@
 # MQTT 协议自动化测试框架
 
+[![CI](https://github.com/sAchNMN/mqtt-test-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/sAchNMN/mqtt-test-framework/actions/workflows/ci.yml)
+
 针对 MQTT broker 的协议一致性自动化测试框架。被测对象是**真实的 broker
 实现**（Mosquitto、EMQX、amqtt），不是自己写的玩具——因为测试的价值来自
 被测对象有多复杂、多容易出错，而不是测试脚本本身有多花哨。
