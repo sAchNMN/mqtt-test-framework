@@ -1,15 +1,23 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
 .venv/
 venv/
+env/
 
+# 测试与覆盖率产物
+.pytest_cache/
 reports/
-*.xml
 .coverage
 htmlcov/
 
+# 编辑器
 .idea/
 .vscode/
-_probe.py
+*.swp
