@@ -1,0 +1,30 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-test-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 3 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 3s
+
+  emqx:
+    image: emqx/emqx:5.8
+    container_name: mqtt-test-emqx
+    profiles: ["emqx"]
+    ports:
+      - "1885:1883"
+      - "18083:18083"
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 8s
+      retries: 10
+      start_period: 20s

@@ -1,0 +1,88 @@
+name: MQTT Test Framework CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  embedded:
+    name: 内嵌 broker (amqtt) / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 运行测试
+        env:
+          MQTT_BACKEND: embedded
+        run: pytest -q --junitxml=reports/junit.xml
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-embedded-py${{ matrix.python-version }}
+          path: reports/
+          if-no-files-found: ignore
+
+  mosquitto:
+    name: 真实 Mosquitto 对比测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 启动 Mosquitto
+        run: |
+          docker run -d --name mosquitto -p 1883:1883 \
+            -v "$PWD/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" \
+            eclipse-mosquitto:2.0
+          for i in $(seq 1 30); do
+            if docker exec mosquitto mosquitto_sub -h 127.0.0.1 -t '$SYS/broker/version' -C 1 -W 2 >/dev/null 2>&1; then
+              echo "mosquitto 已就绪"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "mosquitto 启动超时，输出容器日志："
+          docker logs mosquitto
+          exit 1
+
+      - name: 对真实 broker 运行同一套用例
+        env:
+          MQTT_BACKEND: docker
+          MQTT_PORT: "1883"
+          MQTT_BROKER_NAME: mosquitto
+        run: pytest -q --junitxml=reports/junit-mosquitto.xml
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-mosquitto
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: 输出容器日志
+        if: failure()
+        run: docker logs mosquitto || true
