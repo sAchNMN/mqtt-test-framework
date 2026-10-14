@@ -114,13 +114,36 @@
   本地跑过 pytest，从未执行过 workflow 本身，于是把一个必然失败的检查逻辑发了出去。
   凡是自己没亲眼见过绿的东西，都不该当作"已完成"交付。
 
+### 本地真实 broker 环境（WSL + 原生 Mosquitto）
+
+**背景**：Windows 侧与 WSL 内都没有 Docker。为了不让"对真实 broker 跑测试"这条
+路径只能依赖 CI，在 WSL（Ubuntu 26.04）里装了原生 Mosquitto 2.0.22。
+
+**做法**：
+- `apt-get install mosquitto mosquitto-clients`（用 WSL 的 `-u root` 执行，无需 sudo 密码）
+- **关键点**：mosquitto 2.x 默认**禁止匿名访问**，且只监听 localhost。把项目里的
+  `docker/mosquitto.conf` 放进 `/etc/mosquitto/conf.d/`，即得到
+  `allow_anonymous true` + `listener 1883`（绑定所有接口）
+- Windows 侧经 WSL2 的 localhost 转发直连 `127.0.0.1:1883`，不需要额外网络配置
+
+**结果**：
+- 同一套用例对 Mosquitto 跑通：`16 passed, 6 skipped in 8.07s`
+- **与 amqtt 的结果完全一致** —— 这是第一个横向对比数据点
+- 顺带验证了 `docker/mosquitto.conf` 本身在真实 mosquitto 上的语法与语义有效性
+- 还验证了修复后的 CI 端口探测命令：对已监听端口返回 0、对未监听端口正确返回非 0
+
+**结论**：本地 WSL 原生 broker 是 Docker 的轻量替代，用于快速验证"真实 broker
+兼容性"，不必拉镜像。CI 里仍用 Docker（GitHub runner 没有 WSL 可用）。
+
 ### 结果
 
-- 测试套件：`16 passed, 6 skipped in 8.20s`，零警告
+- 测试套件：`16 passed, 6 skipped`，零警告
+  - 内嵌 amqtt：8.20s
+  - WSL 原生 Mosquitto：8.07s
 - 覆盖范围：环境自检 4 条 + QoS 投递语义 12 条
 - 项目规模：16 个文件 / 1099 行 Python
-- CI：Python 3.11 / 3.12 / 3.13 矩阵（通过）+ 真实 Mosquitto 容器对比 job（首次失败，
-  已修复健康检查逻辑，待二次验证）
+- CI：Python 3.11 / 3.12 / 3.13 矩阵（通过）+ 真实 Mosquitto 容器对比 job
+  （首次失败，根因见踩坑 6；已修复，并在本地用真实 Mosquitto 验证过）
 
 ### 下一步
 
